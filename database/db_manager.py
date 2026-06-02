@@ -654,7 +654,7 @@ def get_dashboard_stats() -> dict:
             SELECT DATE_FORMAT(last_seen,'%Y-%m-%d %H:00') AS hour,
                    SUM(attack_count) AS count
             FROM attackers
-            WHERE last_seen >= NOW() - INTERVAL 24 HOUR
+            WHERE last_seen >= NOW() - INTERVAL 60 MINUTE
             GROUP BY hour
             ORDER BY hour
             """
@@ -680,7 +680,7 @@ def get_dashboard_stats() -> dict:
                 a.vt_malicious, a.vt_checked,
                 a.first_seen,  a.last_seen,
                 g.latitude,    g.longitude,
-                g.city,        g.isp,
+                g.city,        g.isp, g.asn, g.org,
                 m.attack_type, m.severity, m.anomaly_score
             FROM attackers a
             LEFT JOIN geolocation g ON g.attacker_id = a.id
@@ -711,57 +711,75 @@ def get_dashboard_stats() -> dict:
         recent_alerts = _serialize(cur.fetchall())
 
         # ── MITRE technique counts ────────────────────────────────────────────
-        mitre_counts = {}
+        ATTACK_MITRE_MAP = {
+            "SQLi":              [("T1190", "Exploit Public-Facing Application"),
+                                  ("T1505", "Server Software Component")],
+            "XSS":               [("T1189", "Drive-by Compromise"),
+                                  ("T1059", "Command and Scripting Interpreter")],
+            "Path Traversal":    [("T1083", "File and Directory Discovery"),
+                                  ("T1005", "Data from Local System")],
+            "Command Injection": [("T1059", "Command and Scripting Interpreter"),
+                                  ("T1203", "Exploitation for Client Execution")],
+            "SSRF":              [("T1090", "Proxy"),
+                                  ("T1190", "Exploit Public-Facing Application")],
+            "Suspicious Scan":   [("T1595", "Active Scanning"),
+                                  ("T1046", "Network Service Discovery")],
+            "Suspicious HTTP":   [("T1071", "Application Layer Protocol"),
+                                  ("T1595", "Active Scanning")],
+            "Webshell":          [("T1505.003", "Web Shell"),
+                                  ("T1543", "Create/Modify System Process")],
+            "XXE":               [("T1190", "Exploit Public-Facing Application"),
+                                  ("T1083", "File and Directory Discovery")],
+            "DoS":               [("T1498", "Network Denial of Service"),
+                                  ("T1499", "Endpoint Denial of Service")],
+            "File Inclusion":    [("T1190", "Exploit Public-Facing Application"),
+                                  ("T1083", "File and Directory Discovery")],
+        }
 
-        # MITRE from http_requests (NEW)
-        try:
-            cur.execute("""
-                SELECT 
-                    CASE 
-                        WHEN attack_type = 'SQLi' THEN 'T1190'
-                        WHEN attack_type = 'XSS' THEN 'T1189'
-                        WHEN attack_type = 'Path Traversal' THEN 'T1003'
-                        WHEN attack_type = 'Command Injection' THEN 'T1059'
-                        WHEN attack_type = 'Suspicious Scan' THEN 'T1595'
-                        WHEN attack_type = 'Webshell' THEN 'T1505'
-                        WHEN attack_type = 'SSRF' THEN 'T1190'
-                        WHEN attack_type = 'XXE Injection' THEN 'T1190'
-                        WHEN attack_type = 'LFI/RFI' THEN 'T1190'
-                        ELSE 'T1190'
-                    END as technique_id,
-                    COUNT(*) as count
-                FROM http_requests
-                WHERE is_attack = 1 AND attack_type IS NOT NULL
-                GROUP BY technique_id
-                ORDER BY count DESC
-            """)
-            for row in cur.fetchall():
-                mitre_counts[row['technique_id']] = row['count']
-        except Exception:
-            pass
+        mitre_counts: dict[str, int] = {}
 
-        # Keep ML-based MITRE if exists (merge)
-        try:
-            cur.execute("""
-                SELECT mitre_tactics FROM ml_results 
-                WHERE is_anomaly = TRUE AND mitre_tactics IS NOT NULL
-            """)
-            for row in cur.fetchall():
-                if row['mitre_tactics']:
-                    try:
-                        tactics = json.loads(row['mitre_tactics']) if isinstance(row['mitre_tactics'], str) else row['mitre_tactics']
-                        for t in tactics:
-                            tid = t.get('technique_id', '')
-                            if tid:
-                                mitre_counts[tid] = mitre_counts.get(tid, 0) + 1
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+        # من http_requests الفعلية
+        cur.execute("""
+            SELECT attack_type, COUNT(*) AS cnt
+            FROM http_requests
+            WHERE is_attack = TRUE AND attack_type IS NOT NULL
+            GROUP BY attack_type
+        """)
+        for row in cur.fetchall():
+            atype = row["attack_type"]
+            cnt   = int(row["cnt"])
+            techniques = ATTACK_MITRE_MAP.get(
+                atype, [("T1190", "Exploit Public-Facing Application")]
+            )
+            for tid, _ in techniques:
+                mitre_counts[tid] = mitre_counts.get(tid, 0) + cnt
 
-        # Fallback: keep old MITRE if empty
-        if not mitre_counts:
-            mitre_counts = {"T1190": 0, "T1189": 0, "T1003": 0, "T1059": 0, "T1595": 0}
+        # SSH Brute Force
+        if ssh_count > 0:
+            mitre_counts["T1110"] = mitre_counts.get("T1110", 0) + ssh_count
+            mitre_counts["T1078"] = mitre_counts.get("T1078", 0) + ssh_count
+
+        # FTP Brute Force
+        if ftp_count > 0:
+            mitre_counts["T1110"] = mitre_counts.get("T1110", 0) + ftp_count
+
+        # من ML results
+        cur.execute("""
+            SELECT mitre_tactics FROM ml_results
+            WHERE mitre_tactics IS NOT NULL
+            LIMIT 500
+        """)
+        for row in cur.fetchall():
+            tactics = row.get("mitre_tactics") or []
+            if isinstance(tactics, str):
+                try:
+                    tactics = json.loads(tactics)
+                except Exception:
+                    continue
+            for t in tactics:
+                tid = t.get("technique_id", "")
+                if tid:
+                    mitre_counts[tid] = mitre_counts.get(tid, 0) + 1
 
         # ── Top credentials ───────────────────────────────────────────────────
         cur.execute(
@@ -810,52 +828,42 @@ def get_dashboard_stats() -> dict:
 
         return {
             # KPIs
-            "total_attacks":      total_attacks,
-            "total_unique_ips":   total_ips,
-            "open_alerts":        open_alerts,
-            "anomalies_detected": anomalies,
-            
-            # Protocol Stats
-            "ssh_count":          ssh_count,
-            "ftp_count":          ftp_count,
-            "telnet_count":       telnet_count,
-            "rdp_count":          rdp_count,
-            "http_count":         http_count,
-            
+            "total_attacks":           total_attacks,
+            "total_unique_ips":        total_ips,
+            "open_alerts":             open_alerts,
+            "anomalies_detected":      anomalies,
+            # Protocol
+            "ssh_count":               ssh_count,
+            "ftp_count":               ftp_count,
+            "telnet_count":            telnet_count,
+            "rdp_count":               rdp_count,
+            "http_count":              http_count,
             # Brute Force
-            "brute_force_ssh":    brute_force_ssh,
-            "brute_force_ftp":    brute_force_ftp,
-            "brute_force_total":  brute_force_total,
-            
+            "brute_force_ssh":         brute_force_ssh,
+            "brute_force_ftp":         brute_force_ftp,
+            "brute_force_total":       brute_force_total,
             # Web Attacks
-            "sqli_count":             sqli_count,
-            "xss_count":              xss_count,
-            "traversal_count":        traversal_count,
+            "sqli_count":              sqli_count,
+            "xss_count":               xss_count,
+            "traversal_count":         traversal_count,
             "command_injection_count": command_injection_count,
-            "file_inclusion_count":   file_inclusion_count,
-            "xxe_count":              xxe_count,
-            "csrf_count":             csrf_count,
-            
-            # DoS/DDoS
-            "dos_count":          dos_count,
-            
-            # Exploits & Scanners
-            "exploit_count":      exploit_count,
-            "scanner_count":      scanner_count,
-            
-            # Total
-            "http_attack_count":  http_attacks,
-            
-            # Charts & Data
-            "timeline":           timeline,
-            "attack_distribution": attack_distribution,
-            "hourly_rate":        hourly_rate,
-            "mitre_counts":       mitre_counts,
-            "top_credentials":    top_creds,
-            "top_attacked_paths": top_attacked_paths,
-            "geo_points":         geo_points,
-            "recent_attackers":   recent_attackers,
-            "recent_alerts":      recent_alerts,
+            "file_inclusion_count":    file_inclusion_count,
+            "xxe_count":               xxe_count,
+            "csrf_count":              csrf_count,
+            "dos_count":               dos_count,
+            "exploit_count":           exploit_count,
+            "scanner_count":           scanner_count,
+            "http_attack_count":       http_attacks,
+            # Charts
+            "timeline":                timeline,
+            "attack_distribution":     attack_distribution,
+            "hourly_rate":             hourly_rate,
+            "mitre_counts":            mitre_counts,
+            "top_credentials":         top_creds,
+            "top_attacked_paths":      top_attacked_paths,
+            "geo_points":              geo_points,
+            "recent_attackers":        recent_attackers,
+            "recent_alerts":           recent_alerts,
         }
 
 def get_attacker_detail(ip: str) -> dict:
