@@ -50,7 +50,7 @@ A production-ready, multi-protocol honeypot system designed for cybersecurity re
 - Professional schema with foreign keys and indexes
 
 ## 🏗️ Architecture
-
+---
 HoneyTrack/
 ├── app/ # Flask web application
 │ ├── app__init__.py # Unified server entry point
@@ -67,8 +67,8 @@ HoneyTrack/
 ├── virustotal/
 │ └── vt_client.py # VirusTotal API integration
 └── GeoLite2-*.mmdb # MaxMind geolocation databases
-
- #🔧 Installation
+---
+ 🔧 Installation
 
 
  Clone repository
