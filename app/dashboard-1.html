@@ -221,6 +221,7 @@ code { font-size:.8rem; color:var(--blue); background:#1c2a3a; padding:1px 6px; 
               <th>IP Address</th>
               <th>Country</th>
               <th>ASN/ISP</th>
+			  <th>Attacks</th>
               <th>VT Verdict</th>
               <th>MITRE</th>
               <th>Last Seen</th>
@@ -422,7 +423,7 @@ function updateAttackersTable(attackers) {
   document.getElementById('attackers-count').textContent = attackers.length;
   const tbody = document.getElementById('tbl-attackers');
   if (!attackers.length) { 
-    tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:20px">No attackers yet</td></tr>'; 
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:20px">No attackers yet</td></tr>'; 
     return; 
   }
   
