@@ -220,7 +220,7 @@ code { font-size:.8rem; color:var(--blue); background:#1c2a3a; padding:1px 6px; 
             <tr>
               <th>IP Address</th>
               <th>Country</th>
-              <th>Attacks</th>
+              <th>ASN/ISP</th>
               <th>VT Verdict</th>
               <th>MITRE</th>
               <th>Last Seen</th>
@@ -271,25 +271,42 @@ code { font-size:.8rem; color:var(--blue); background:#1c2a3a; padding:1px 6px; 
 Chart.defaults.color = '#8b949e';
 Chart.defaults.borderColor = '#30363d';
 Chart.defaults.font.family = 'Segoe UI';
-
 // MITRE ATT&CK Descriptions Map
-const MITRE_DESCRIPTIONS = {
-  'T1190': 'Exploit Public-Facing Application',
-  'T1203': 'Exploitation for Client Execution',
-  'T1498': 'Network Denial of Service',
-  'T1499': 'Endpoint Denial of Service',
-  'T1110': 'Brute Force',
-  'T1078': 'Valid Accounts',
-  'T1059': 'Command and Scripting Interpreter',
-  'T1210': 'Exploitation of Remote Services',
-  'T1046': 'Network Service Scanning',
-  'T1133': 'External Remote Services',
-  'T1584': 'Compromise Infrastructure',
-  'T1505': 'Server Software Component',
-  'T1195': 'Supply Chain Compromise',
-  'T1204': 'User Execution',
-  'T1068': 'Exploitation for Privilege Escalation'
+const MITRE_NAMES = {
+    "T1190":    "Exploit Public-Facing Application",
+    "T1189":    "Drive-by Compromise",
+    "T1059":    "Command and Scripting Interpreter",
+    "T1083":    "File and Directory Discovery",
+    "T1005":    "Data from Local System",
+    "T1090":    "Proxy / SSRF",
+    "T1595":    "Active Scanning",
+    "T1046":    "Network Service Discovery",
+    "T1505":    "Server Software Component",
+    "T1505.003":"Web Shell",
+    "T1543":    "Create/Modify System Process",
+    "T1498":    "Network Denial of Service",
+    "T1499":    "Endpoint Denial of Service",
+    "T1110":    "Brute Force",
+    "T1078":    "Valid Accounts",
+    "T1071":    "Application Layer Protocol",
+    "T1203":    "Exploitation for Client Execution"
 };
+function updateMitreTable(mitreData) {
+    if (!mitreData || !Object.keys(mitreData).length) return;
+    const entries = Object.entries(mitreData).sort((a,b)=>b[1]-a[1]);
+    const max = entries[0]?.[1] || 1;
+    document.getElementById('mitre-count').textContent = entries.length;
+    document.getElementById('tbl-mitre').innerHTML = entries.map(([tid, cnt]) => `<tr>
+        <td><span class="mitre-tag">${tid}</span></td>
+        <td style="color:var(--text)">${MITRE_NAMES[tid] || 'Unknown Technique'}</td>
+        <td>${cnt}</td>
+        <td>
+            <div style="background:#21262d;border-radius:4px;height:6px;width:100%;min-width:80px">
+                <div style="background:var(--purple);height:6px;border-radius:4px;width:${Math.round(cnt/max*100)}%"></div>
+            </div>
+        </td>
+    </tr>`).join('');
+}
 
 // Initialize Charts
 const timelineCtx = document.getElementById('chart-timeline').getContext('2d');
@@ -433,6 +450,7 @@ function updateAttackersTable(attackers) {
       <tr>
         <td><code>${a.ip_address}</code></td>
         <td>${a.country || '?'}</td>
+		<td style="font-size:.7rem;">${a.asn || ''} ${a.org || ''}</td>
         <td>${a.attack_count}</td>
         <td>${vtVerdict}</td>
         <td>${mitreTags}</td>
@@ -460,17 +478,29 @@ function updateAlertsTable(alerts) {
   `).join('');
 }
 
-function updateTimelineChart(attackers) {
-  attackers.forEach(a => { 
-    if (a.last_seen) { 
-      const hour = a.last_seen.substring(0, 13).replace('T', ' '); 
-      timelineData[hour] = (timelineData[hour] || 0) + (a.attack_count || 1); 
-    } 
-  });
-  
-  const sorted = Object.keys(timelineData).sort().slice(-12);
-  timelineChart.data.labels = sorted.map(h => h.substring(8));
-  timelineChart.data.datasets[0].data = sorted.map(h => timelineData[h]);
+function updateTimelineChart(data) {
+  // استخدام timeline من الـ API مباشرة
+  if (data.timeline && data.timeline.length > 0) {
+    const labels = data.timeline.map(t => t.hour.substring(11, 16));
+    const counts = data.timeline.map(t => t.count);
+    
+    timelineChart.data.labels = labels;
+    timelineChart.data.datasets[0].data = counts;
+  } else {
+    // fallback للطريقة القديمة
+    const attackers = data.recent_attackers || data;
+    if (Array.isArray(attackers)) {
+      attackers.forEach(a => { 
+        if (a.last_seen) { 
+          const hour = a.last_seen.substring(0, 13).replace('T', ' '); 
+          timelineData[hour] = (timelineData[hour] || 0) + (a.attack_count || 1); 
+        } 
+      });
+      const sorted = Object.keys(timelineData).sort().slice(-12);
+      timelineChart.data.labels = sorted.map(h => h.substring(8));
+      timelineChart.data.datasets[0].data = sorted.map(h => timelineData[h]);
+    }
+  }
   timelineChart.update('none');
 }
 
@@ -510,7 +540,7 @@ function updateTypesChart(data) {
   typesChart.data.datasets[0].backgroundColor = colors.slice(0, labels.length);
   typesChart.update('none');
 }
-
+const MITRE_DESCRIPTIONS = MITRE_NAMES;
 function updateMitreTable(data) {
   const mitreCounts = data.mitre_counts || {};
   const mitreBody = document.getElementById('tbl-mitre');
@@ -657,7 +687,7 @@ async function refresh() {
     updateKPIs(data);
     updateAttackersTable(data.recent_attackers || []);
     updateAlertsTable(data.recent_alerts || []);
-    updateTimelineChart(data.recent_attackers || []);
+    updateTimelineChart(data);
     updateProtocolChart(data);
     updateTypesChart(data);  // ⭐ FULL DYNAMIC TYPES
     updateMitreTable(data);
@@ -691,6 +721,23 @@ async function refresh() {
 // Initial refresh and auto-update every 5 seconds
 refresh();
 setInterval(refresh, 5000);
+</script>
+<script>
+// تحديث الرسم البياني للهجمات كل 5 ثواني من timeline مباشرة
+setInterval(function() {
+    fetch('/api/stats')
+    .then(r => r.json())
+    .then(data => {
+        if (data.timeline && data.timeline.length > 0) {
+            const labels = data.timeline.map(t => t.hour.substring(11, 16)); // HH:MM
+            const counts = data.timeline.map(t => t.count);
+            
+            timelineChart.data.labels = labels;
+            timelineChart.data.datasets[0].data = counts;
+            timelineChart.update('none');
+        }
+    });
+}, 5000);
 </script>
 </body>
 </html>
