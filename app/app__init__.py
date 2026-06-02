@@ -19,12 +19,13 @@ import json
 import jwt
 from flask import Flask, jsonify, make_response, redirect, request, send_file
 from flask_cors import CORS
-
 # ✅ تحميل API Key من المتغيرات البيئية (وليس hardcoded)
 VT_API_KEY = os.environ.get("VT_API_KEY", "fae2ab08f8083bede40ceb7dc7e221888d59e7c7655536be0db2c86131ff986f")
 if not VT_API_KEY:
     print("[!] Warning: VT_API_KEY not set - VirusTotal integration disabled")
 os.environ["VT_API_KEY"] = VT_API_KEY
+
+VT_ENABLED = bool(VT_API_KEY)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
@@ -176,30 +177,34 @@ def _load_vt():
         vt_queue.enqueue = enqueue
 
     return vt_queue
-
 vt_queue, VT_READY = _try_import("VirusTotal", _load_vt)
 
 def _load_geo():
-    """تحميل GeoIP database"""
+    """تحميل GeoIP database مع ASN"""
     import geoip2.database
-    db_path = BASE_DIR / "app" / "GeoLite2-City.mmdb"
+    city_path = BASE_DIR / "app" / "GeoLite2-City.mmdb"
+    asn_path  = BASE_DIR / "app" / "GeoLite2-ASN.mmdb"
     
-    if not db_path.exists():
-        print(f"[--] GeoIP database not found at {db_path}")
+    if not city_path.exists():
+        print(f"[--] GeoIP City database not found at {city_path}")
         def empty_lookup(ip: str) -> dict:
             return {}
         return empty_lookup
     
-    reader = geoip2.database.Reader(str(db_path))
+    city_reader = geoip2.database.Reader(str(city_path))
+    asn_reader  = geoip2.database.Reader(str(asn_path)) if asn_path.exists() else None
+    
+    if asn_reader:
+        print("[OK] GeoIP ASN database loaded")
 
     def lookup(ip: str) -> dict:
-        """البحث عن معلومات جغرافية لعنوان IP"""
+        """البحث عن معلومات جغرافية + ASN لعنوان IP"""
         private = ("127.", "10.", "192.168.", "172.")
         if any(ip.startswith(p) for p in private) or ip == "unknown":
             return {}
         try:
-            resp = reader.city(ip)
-            return {
+            resp = city_reader.city(ip)
+            result = {
                 "ip": ip,
                 "country": resp.country.name or "Unknown",
                 "country_code": resp.country.iso_code or "",
@@ -213,6 +218,17 @@ def _load_geo():
             }
         except Exception:
             return {}
+        
+        # ASN lookup
+        if asn_reader:
+            try:
+                asn_resp = asn_reader.asn(ip)
+                result["asn"] = f"AS{asn_resp.autonomous_system_number}" if asn_resp.autonomous_system_number else ""
+                result["org"] = asn_resp.autonomous_system_organization or ""
+            except Exception:
+                pass
+        
+        return result
 
     return lookup
 
@@ -317,13 +333,23 @@ def api_health():
 
 @app.route("/api/geo/<ip>")
 @login_required
+
 def api_geo(ip: str):
-    """معلومات جغرافية لعنوان IP"""
+    """معلومات جغرافية لعنوان IP مع دعم X-Forwarded-For"""
     if not GEO_READY:
         return jsonify({"error": "GeoIP not available"}), 503
+    
+    # ✅ تنظيف الـ IP من أي ports أو مسافات
+    ip = ip.strip().split(':')[0]
+    
     result = geo_lookup(ip)
     if not result:
         return jsonify({"error": "Lookup failed or private IP"}), 404
+    
+    # ✅ إضافة معلومات إضافية
+    result["queried_ip"] = ip
+    result["source"] = "GeoIP Database"
+    
     return jsonify(result)
 
 
