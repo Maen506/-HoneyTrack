@@ -51,23 +51,22 @@ A production-ready, multi-protocol honeypot system designed for cybersecurity re
 
  🏗️ Architecture
 
-
 HoneyTrack/
-├── app/                    # Flask web application
-│   ├── app__init__.py      # Unified server entry point
-│   ├── dashboard-1.html    # Live attack dashboard
-│   └── login.html          # Authentication page
-├── core/                   # Honeypot engines
-│   ├── http_honeypot.py    # HTTP honeypot (port 8080)
-│   ├── ssh_honeypot.py     # SSH honeypot (port 2222)
-│   └── event_queue.py      # Thread-safe event queue
+├── app/ # Flask web application
+│ ├── app__init__.py # Unified server entry point
+│ ├── dashboard-1.html # Live attack dashboard
+│ └── login.html # Authentication page
+├── core/ # Honeypot engines
+│ ├── http_honeypot.py # HTTP honeypot (port 8080)
+│ ├── ssh_honeypot.py # SSH honeypot (port 2222)
+│ └── event_queue.py # Thread-safe event queue
 ├── database/
-│   └── db_manager.py       # MySQL database operations
+│ └── db_manager.py # MySQL database operations
 ├── ml/
-│   └── predictor.py        # Machine learning anomaly detection
+│ └── predictor.py # Machine learning anomaly detection
 ├── virustotal/
-│   └── vt_client.py        # VirusTotal API integration
-└── GeoLite2-*.mmdb         # MaxMind geolocation databases
+│ └── vt_client.py # VirusTotal API integration
+└── GeoLite2-*.mmdb # MaxMind geolocation databases
 
  🔧 Installation
 
