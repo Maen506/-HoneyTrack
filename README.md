@@ -1,111 +1,132 @@
-# CyberSentinel
+# 🍯 HoneyTrack — Intelligent Honeypot System
 
-## نظرة عامة
+A production-ready honeypot platform designed to detect, capture,
+and analyze malicious network activity using machine learning,
+threat intelligence, and real-time visualization.
 
-CyberSentinel هو مشروع مصيدة عسل (Honeypot) متقدم مصمم لتحليل الهجمات السيبرانية بشكل استباقي. يقوم المشروع بمحاكاة خدمات مختلفة مثل SSH و HTTP لجذب المهاجمين، وجمع بيانات حول أساليبهم، ثم تحليل هذه البيانات باستخدام تعلم الآلة وواجهات برمجة تطبيقات مثل VirusTotal لتحديد التهديدات وأنواع الهجمات.
+---
 
-يهدف CyberSentinel إلى توفير رؤى قيمة حول سلوك المهاجمين، مما يساعد المؤسسات على تعزيز دفاعاتها الأمنية.
+## 🔍 Overview
 
-## الميزات الرئيسية
+HoneyTrack emulates vulnerable SSH and HTTP services to lure
+attackers, then automatically analyzes their behavior using
+ML models and the VirusTotal API, displaying everything on a
+live dark-themed dashboard.
 
-- **مصائد عسل متعددة**: يدعم محاكاة خدمات SSH و HTTP.
-- **تحليل متقدم**: يستخدم تعلم الآلة (Random Forest و Isolation Forest) للكشف عن الشذوذ وتصنيف الهجمات.
-- **تكامل VirusTotal**: يرسل عناوين IP المشبوهة إلى VirusTotal لمزيد من التحليل.
-- **لوحة تحكم تفاعلية**: يوفر واجهة ويب لعرض الأحداث والتنبيهات والتحليلات.
-- **تسجيل شامل**: يسجل جميع التفاعلات والبيانات المتعلقة بالهجمات.
+---
 
-## البدء السريع
+## ✨ Features
 
-### التشغيل باستخدام Docker (موصى به)
+- **SSH Honeypot** — Captures brute-force attempts and commands
+- **HTTP Honeypot** — Detects SQLi, XSS, Path Traversal,
+  Command Injection, SSRF, XXE, and more
+- **ML Detection** — Isolation Forest + Random Forest trained
+  on UNSW-NB15 dataset
+- **VirusTotal Integration** — Automatic IP reputation lookup
+  across 70+ security vendors
+- **MITRE ATT&CK Mapping** — Every attack mapped to techniques
+- **GeoIP Tracking** — Real-time attacker origin on world map
+- **Live Dashboard** — Auto-refreshing dark UI with charts,
+  alerts, and threat intelligence cards
+- **Alert System** — Automatic severity-based alerting
 
-لتبسيط عملية الإعداد والتشغيل، يمكنك استخدام Docker و Docker Compose:
+---
 
-1.  **المتطلبات:**
-    -   Docker Desktop (يتضمن Docker Engine و Docker Compose)
+## 🏗️ Architecture
 
-2.  **إعداد ملف `.env`:**
-    انسخ `env.example.` إلى `.env` في المجلد الرئيسي للمشروع وقم بتعديل القيم بمعلومات قاعدة البيانات الخاصة بك ومفتاح API الخاص بـ VirusTotal (إذا كنت تخطط لاستخدامه).
-    ```bash
-    cp .env.example .env
-    # افتح ملف .env واملأ البيانات المطلوبة
-    ```
+HoneyTrack/
+├── server/
+│   └── unified_server.py      # Flask API + pipeline worker
+├── core/
+│   ├── ssh_honeypot.py        # Paramiko-based SSH emulator
+│   ├── http_honeypot.py       # Raw socket HTTP emulator
+│   └── event_queue.py         # Shared event queue
+├── database/
+│   └── db_manager.py          # MySQL manager (9 tables)
+├── ml/
+│   ├── predictor.py           # Live prediction engine
+│   └── models/                # Pre-trained .pkl models
+├── virustotal/
+│   └── vt_client.py           # VT API client + queue
+└── app/
+└── dashboard-1.html       # Live dashboard UI
 
-3.  **تشغيل المشروع:**
-    من المجلد الرئيسي للمشروع، قم بتشغيل الأمر التالي:
-    ```bash
-    docker-compose up --build -d
-    ```
-    سيقوم هذا الأمر ببناء صور Docker وتشغيل الخدمات في الخلفية (detached mode).
+---
 
-4.  **الوصول إلى لوحة التحكم:**
-    ستكون لوحة التحكم متاحة على `http://localhost:5000`.
+## 🛡️ Attack Detection
 
-5.  **إيقاف المشروع:**
-    لإيقاف الخدمات وحذف الحاويات والشبكات:
-    ```bash
-    docker-compose down
-    ```
+| Attack Type       | Detection Method         | MITRE Technique |
+|-------------------|--------------------------|-----------------|
+| SQL Injection     | Pattern matching         | T1190           |
+| XSS               | Pattern matching         | T1189           |
+| Path Traversal    | Pattern matching         | T1083           |
+| Command Injection | Pattern matching         | T1059           |
+| SSRF              | Pattern matching         | T1090           |
+| SSH Brute Force   | Auth attempt logging     | T1110           |
+| Web Scanning      | UA + path analysis       | T1595           |
+| Anomaly Detection | Isolation Forest (ML)    | T1190, T1203    |
 
-### التشغيل يدوياً (للمطورين المتقدمين)
+---
 
-### المتطلبات
+## 🗄️ Database Schema
 
-- Python 3.8+
-- MySQL Server
+9 tables: `attackers`, `geolocation`, `credential_attempts`,
+`sessions`, `command_logs`, `http_requests`, `ml_results`,
+`vt_reports`, `alerts`
 
-### الإعداد
+---
 
-1.  **استنساخ المستودع:**
-    ```bash
-    git clone https://github.com/Maen506/CyberSentinel.git
-    cd CyberSentinel
-    ```
+## 🚀 Quick Start
 
-2.  **إعداد البيئة الافتراضية وتثبيت التبعيات:**
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate  # على Linux/macOS
-    # venv\\Scripts\\activate.bat  # على Windows
-    pip install -r requirements.txt
-    ```
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
 
-3.  **إعداد قاعدة البيانات:**
-    تأكد من تشغيل خادم MySQL الخاص بك. ثم قم بتشغيل السكريبت التالي لإعداد قاعدة البيانات والمستخدم:
-    ```bash
-    python database/setup_database.py
-    ```
+# 2. Configure environment
+cp .env.example .env
+# Edit: DB_HOST, DB_USER, DB_PASS, VT_API_KEY
 
-4.  **إعداد ملف `.env`:**
-    انسخ `env.example.` إلى `.env` وقم بتعديل القيم بمعلومات قاعدة البيانات الخاصة بك ومفتاح API الخاص بـ VirusTotal (إذا كنت تخطط لاستخدامه).
-    ```bash
-    cp .env.example .env
-    # افتح ملف .env واملأ البيانات المطلوبة
-    ```
+# 3. Run
+python server/unified_server.py
 
-5.  **تشغيل المشروع:**
-    ```bash
-    python main.py
-    ```
+# Dashboard → http://localhost:5000
+```
 
-    ستكون لوحة التحكم متاحة على `http://localhost:5000`.
+---
 
+## 🔧 Requirements
 
+- Python 3.12+
+- MySQL 8.0+
+- GeoLite2-City.mmdb (MaxMind)
+- VirusTotal API Key (free tier)
 
-## الهيكل الفني
+---
 
-يتكون المشروع من المكونات الرئيسية التالية:
+## 📊 Dashboard
 
--   `app/`: يحتوي على واجهة الويب (لوحة التحكم) وملفاتها.
--   `core/`: يحتوي على منطق مصائد العسل (SSH و HTTP) ونظام قائمة انتظار الأحداث.
--   `database/`: يحتوي على سكريبتات إعداد قاعدة البيانات ومنطق التفاعل معها.
--   `ml/`: يحتوي على نماذج تعلم الآلة ومنطق التحليل.
--   `virustotal/`: يحتوي على منطق التكامل مع VirusTotal API.
--   `logs/`: مجلد لتخزين سجلات المشروع.
+- Real-time KPIs — Total Attacks, Unique IPs, Alerts, Anomalies
+- Attack Types Chart — Dynamic from live data
+- World Map — GeoIP attacker origins
+- MITRE ATT&CK Table — Full technique breakdown
+- VirusTotal Cards — Per-IP threat intelligence
+- Live Activity Feed — Real-time event stream
 
-## المساهمة
+---
 
-نرحب بالمساهمات في مشروع CyberSentinel. يرجى مراجعة `CONTRIBUTING.md` (إذا كان متاحًا) للحصول على إرشادات حول كيفية المساهمة.
+## ⚠️ Legal Disclaimer
 
-## الترخيص
+This tool is developed for **educational and research purposes
+only** as part of a cybersecurity engineering capstone project.
+Deploy only in controlled lab environments.
+Do not use against systems you do not own or have explicit
+permission to test.
 
-هذا المشروع مرخص بموجب ترخيص MIT. انظر ملف `LICENSE` لمزيد من التفاصيل.
+---
+
+## 👨‍💻 Author
+
+Developed as a Final Year Capstone Project
+Jordan University of Science and Technology
+Department of Cybersecurity Engineering — 2026
+
